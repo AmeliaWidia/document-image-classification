@@ -1,168 +1,295 @@
-# Klasifikasi Gambar Dokumen — EfficientNet-B0
+# Klasifikasi Gambar Dokumen dengan EfficientNet-B0
 
-Proyek Supervised Machine Learning untuk klasifikasi 16 kelas dokumen hasil scan (subset RVL-CDIP) menggunakan PyTorch dan fine-tuning EfficientNet-B0 pretrained ImageNet.
+Proyek ini menggunakan PyTorch untuk mengklasifikasikan dokumen hasil scan ke dalam 16 kelas. Model yang digunakan adalah **EfficientNet-B0** dengan bobot pretrained ImageNet.
 
-## Struktur repository
+Repository ini memuat tiga eksperimen training EfficientNet-B0:
+1. Baseline
+2. Hyperparameter Tuning 1
+3. Hyperparameter Tuning 2
+
+Ketiga eksperimen menggunakan EfficientNet-B0. Repository ini tidak mencakup model ConvNeXt.
+
+## Struktur Repository
 
 ```text
 kaggle-document-classification/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── data/.gitkeep
-├── checkpoint/.gitkeep
-├── notebooks/
-│   ├── 01_eda.ipynb
-│   ├── 02_modeling.ipynb
-│   └── 03_submission.ipynb
-├── scripts/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── dataset.py
-│   ├── model.py
-│   ├── train.py
-│   ├── evaluate.py
-│   └── predict.py
-├── submissions/.gitkeep
-└── reports/figures/.gitkeep
+â”œâ”€â”€ README.md
+â”œâ”€â”€ requirements.txt
+â”œâ”€â”€ .gitignore
+â”œâ”€â”€ data/
+â”‚   â””â”€â”€ .gitkeep
+â”œâ”€â”€ checkpoint/
+â”‚   â””â”€â”€ efficientnet_b0/
+â”‚       â”œâ”€â”€ best_document_efficientnet_b0_baseline.pth
+â”‚       â”œâ”€â”€ best_document_efficientnet_b0_tuning.pth
+â”‚       â””â”€â”€ best_document_efficientnet_b0_tuning2.pth
+â”œâ”€â”€ notebooks/
+â”‚   â”œâ”€â”€ 01_eda.ipynb
+â”‚   â”œâ”€â”€ 02_modeling.ipynb
+â”‚   â””â”€â”€ 03_submission.ipynb
+â”œâ”€â”€ scripts/
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ config.py
+â”‚   â”œâ”€â”€ dataset.py
+â”‚   â”œâ”€â”€ model.py
+â”‚   â”œâ”€â”€ train.py
+â”‚   â”œâ”€â”€ evaluate.py
+â”‚   â””â”€â”€ predict.py
+â”œâ”€â”€ submissions/
+â”‚   â””â”€â”€ .gitkeep
+â””â”€â”€ reports/
+    â”œâ”€â”€ EXPERIMENTS.md
+    â””â”€â”€ figures/
+        â””â”€â”€ .gitkeep
 ```
+
+> Folder `checkpoint/efficientnet_b0/` berisi checkpoint terbaik dari ketiga eksperimen. 
 
 ## Dataset
 
-Dataset kompetisi berisi 32.003 train, 7.994 test, dan 16 kelas. File metadata yang diperlukan adalah `train.csv`, `test.csv`, `sample_submission.csv`. Data gambar TIFF tidak disertakan di GitHub.
+Dataset kompetisi terdiri dari:
+- 32.003 gambar training
+- 7.994 gambar testing
+- 16 kelas dokumen
 
-Unduh dengan Kaggle API setelah menerima aturan kompetisi:
-```bash
-pip install kaggle
-kaggle competitions download -c <competition-slug> -p data
-```
-Ekstrak arsip ke `data/` sehingga CSV dan folder gambar train/test tersedia. Unduhan manual: https://www.kaggle.com/t/ec93bc56cc9842959bb6728723d23d29
+File metadata yang diperlukan:
+- `train.csv`
+- `test.csv`
+- `sample_submission.csv`
+
+Gambar disimpan dalam format TIFF dan diakses melalui Kaggle Input. 
 
 ## Setup
+
+Clone repository:
 
 ```bash
 git clone <URL_REPOSITORY>
 cd kaggle-document-classification
+```
+
+Buat virtual environment dan instal dependensi:
+
+```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+
+# Linux/macOS
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
-Di Kaggle, sebaiknya gunakan PyTorch/Torchvision bawaan image Kaggle dan jangan memasang ulang versi CUDA secara sembarang.
 
-## Pretrained weights
+Di Kaggle, gunakan PyTorch dan Torchvision yang sudah tersedia selama versinya sesuai. Periksa kompatibilitas GPU sebelum memasang atau memperbarui PyTorch dan CUDA.
 
-Sediakan `efficientnet_b0_rwightman-7f5810bc.pth` dari bobot Torchvision ImageNet. Tambahkan file itu sebagai Kaggle Input untuk penggunaan Internet OFF. Atur environment variable `DOC_WEIGHTS_PATH` ke path file tersebut jika tidak ditemukan otomatis.
+## Pretrained Weights
+
+Model EfficientNet-B0 menggunakan bobot pretrained ImageNet.
+
+File bobot yang digunakan:
+
+```text
+efficientnet_b0_rwightman-7f5810bc.pth
+```
+
+Jika notebook dijalankan dengan Internet OFF, tambahkan dataset yang berisi pretrained weights melalui **Add Input** di Kaggle. Jika bobot tidak terdeteksi otomatis, isi `DOC_WEIGHTS_PATH` dengan lokasi file `.pth` tersebut.
 
 ## Workflow
 
-1. EDA: distribusi kelas, contoh dokumen, ukuran, aspect ratio, intensitas, dan audit TIFF.
-2. Preprocessing: Pillow dengan fallback tifffile; RGB; resize proporsional 224×224 dengan padding putih; normalisasi ImageNet.
-3. Augmentasi train: rotasi ±5°, affine ringan, brightness/contrast, Gaussian blur. Tidak menggunakan flip horizontal/vertikal.
-4. Split: stratified 90:10, seed 42.
-5. Modeling: EfficientNet-B0 pretrained, classifier 16 kelas, CrossEntropyLoss label smoothing 0,05, AdamW, ReduceLROnPlateau, AMP, gradient clipping, early stopping.
-6. Evaluasi: accuracy, macro F1, classification report, confusion matrix.
-7. Submission: tiga file CSV, satu per eksperimen.
+1. **EDA:** memeriksa distribusi kelas, contoh gambar, ukuran gambar, aspect ratio, intensitas, dan kondisi file TIFF.
+2. **Preprocessing:** membaca TIFF menggunakan Pillow dengan fallback `tifffile`, mengubah gambar menjadi RGB, melakukan resize proporsional ke ukuran 224 Ã— 224 dengan padding putih, lalu normalisasi ImageNet.
+3. **Augmentasi:** rotasi ringan, affine, perubahan brightness/contrast, dan Gaussian blur. Tidak menggunakan horizontal flip atau vertical flip.
+4. **Data split:** stratified split 90:10 dengan seed 42.
+5. **Training:** fine-tuning EfficientNet-B0 dengan classifier 16 kelas, CrossEntropyLoss, AdamW, mixed precision, gradient clipping, dan early stopping sesuai implementasi eksperimen.
+6. **Evaluasi:** mengukur validation accuracy, macro F1, classification report, dan confusion matrix.
+7. **Submission:** menghasilkan file CSV untuk masing-masing eksperimen.
 
-## Eksperimen
+## Tiga Eksperimen Training
+
+Ketiga eksperimen menggunakan arsitektur EfficientNet-B0 dan pretrained ImageNet yang sama. Perbedaan eksperimen terletak pada konfigurasi hyperparameter.
 
 | Hyperparameter | Baseline | Tuning 1 | Tuning 2 |
 |---|---:|---:|---:|
 | Dropout | 0,30 | 0,40 | 0,35 |
-| Backbone LR | 0,0001 | 0,00005 | 0,000075 |
-| Head LR | 0,0008 | 0,0003 | 0,0005 |
+| Backbone learning rate | 0,0001 | 0,00005 | 0,000075 |
+| Head learning rate | 0,0008 | 0,0003 | 0,0005 |
 | Weight decay | 0,0001 | 0,0005 | 0,00025 |
 | Epoch maksimal | 10 | 12 | 12 |
 | Batch size | 16 | 16 | 16 |
 
-Setiap eksperimen dimulai dari pretrained ImageNet yang sama. Checkpoint terbaik disimpan berdasarkan validation accuracy.
+Checkpoint terbaik setiap eksperimen disimpan dengan nama berbeda. Dengan begitu, model dapat dievaluasi atau digunakan untuk prediksi tanpa perlu menjalankan training lagi.
 
-## CLI
+### Hasil Validation
 
-Jalankan dari root repository:
+| Eksperimen | Validation Accuracy | Macro F1 | Best Epoch |
+|---|---:|---:|---:|
+| Baseline | 0,855358 | 0,854976 | 8 |
+| Hyperparameter Tuning 1 | 0,845986 | 0,845834 | 12 |
+| Hyperparameter Tuning 2 | 0,860669* | 0,860052 | 12 |
+
+## Menjalankan Training
+
+Training Baseline:
+
 ```bash
 python -m scripts.train --experiment baseline
-python -m scripts.train --experiment tuning1
-python -m scripts.train --experiment tuning2
-python -m scripts.train --experiment all
-python -m scripts.evaluate --experiment all
-python -m scripts.predict --experiment all
-python -m scripts.predict --experiment all --tta
 ```
 
-Opsi data dan resource:
+Training Hyperparameter Tuning 1:
+
+```bash
+python -m scripts.train --experiment tuning1
+```
+
+Training Hyperparameter Tuning 2:
+
+```bash
+python -m scripts.train --experiment tuning2
+```
+
+Menjalankan ketiga eksperimen secara berurutan:
+
+```bash
+python -m scripts.train --experiment all
+```
+
+Periksa opsi training yang tersedia:
+
 ```bash
 python -m scripts.train --help
+```
+
+Contoh pengaturan direktori data dan DataLoader:
+
+```bash
 python -m scripts.train --data-dir data --batch-size 16 --num-workers 2
 ```
 
-## Import scripts di Kaggle (Internet OFF)
+## Evaluasi
 
-Cara paling aman adalah mengunggah repository sebagai Kaggle Dataset, lalu menambahkannya melalui **Add Input** bersama dataset kompetisi dan dataset pretrained weights.
+Untuk mengevaluasi ketiga eksperimen:
 
-Cell pertama di Kaggle:
-```python
-from pathlib import Path
-import sys
-
-matches = list(Path("/kaggle/input").rglob("scripts/config.py"))
-if not matches:
-    raise FileNotFoundError("Tambahkan dataset repository melalui Add Input.")
-
-REPO_ROOT = matches[0].parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
-from scripts.config import CLASS_NAMES, EXPERIMENTS
-from scripts.dataset import read_tiff_with_fallback
-from scripts.model import build_model
-print("Import berhasil:", REPO_ROOT)
+```bash
+python -m scripts.evaluate --experiment all
 ```
 
-Folder `/kaggle/input` bersifat read-only. Sebelum menjalankan modul, arahkan output ke `/kaggle/working`:
+Script evaluasi menampilkan validation accuracy, macro F1, classification report, dan confusion matrix.
+
+## Membuat Submission
+
+Membuat submission untuk ketiga eksperimen:
+
+```bash
+python -m scripts.predict --experiment all
+```
+
+Jika ingin menggunakan Test-Time Augmentation (TTA):
+
+```bash
+python -m scripts.predict --experiment all --tta
+```
+
+File CSV tersimpan di folder `submissions/`. Sebelum diunggah ke Kaggle, periksa nama kolom, jumlah baris, urutan ID, dan rentang label agar sesuai dengan `sample_submission.csv`.
+
+## Menjalankan Repository di Kaggle
+
+Untuk menjalankan project di Kaggle, unggah repository sebagai Kaggle Dataset. Setelah itu, tambahkan repository dan sumber data yang dibutuhkan melalui **Add Input**:
+1. Dataset kompetisi document image classification.
+2. Dataset pretrained EfficientNet-B0 apabila menggunakan Internet OFF.
+
+Folder `/kaggle/input` hanya dapat dibaca. Simpan checkpoint baru, hasil evaluasi, dan file submission di `/kaggle/working`.
+
+Contoh cell untuk menemukan repository dan dataset:
+
 ```python
+from pathlib import Path
 import os
-os.environ["DOC_DATA_DIR"] = "/kaggle/input/<folder-dataset-kompetisi>"
+import sys
+
+INPUT_ROOT = Path("/kaggle/input")
+
+repo_candidates = list(INPUT_ROOT.rglob("scripts/config.py"))
+if not repo_candidates:
+    raise FileNotFoundError(
+        "Repository belum ditambahkan melalui Kaggle Add Input."
+    )
+
+REPO_ROOT = repo_candidates[0].parent.parent
+
+data_candidates = [
+    path for path in INPUT_ROOT.rglob("train.csv")
+    if (path.parent / "test.csv").exists()
+    and (path.parent / "sample_submission.csv").exists()
+]
+
+if not data_candidates:
+    raise FileNotFoundError(
+        "Dataset kompetisi tidak ditemukan di Kaggle Input."
+    )
+
+DATA_ROOT = data_candidates[0].parent
+
+os.environ["DOC_DATA_DIR"] = str(DATA_ROOT)
 os.environ["DOC_CHECKPOINT_DIR"] = "/kaggle/working/checkpoint"
 os.environ["DOC_SUBMISSION_DIR"] = "/kaggle/working/submissions"
 os.environ["DOC_REPORT_DIR"] = "/kaggle/working/reports"
-os.environ["DOC_WEIGHTS_PATH"] = "/kaggle/input/<folder-bobot>/<nama-file-bobot>.pth"
-```
-Environment variable harus diset **sebelum** import `scripts.config`, karena konfigurasi dibaca saat modul diimpor. Jika sudah telanjur import, restart kernel atau reload modul.
 
-Kemudian:
+sys.path.insert(0, str(REPO_ROOT))
+os.chdir(REPO_ROOT)
+
+print("Repository:", REPO_ROOT)
+print("Dataset:", DATA_ROOT)
+```
+
+Jika checkpoint tiga eksperimen sudah tersedia sebagai Kaggle Input, salin ke folder kerja:
+
 ```python
-%cd $REPO_ROOT
-!python -m scripts.train --experiment all
-!python -m scripts.evaluate --experiment all
-!python -m scripts.predict --experiment all
+from pathlib import Path
+import shutil
+
+checkpoint_names = [
+    "best_document_efficientnet_b0_baseline.pth",
+    "best_document_efficientnet_b0_tuning.pth",
+    "best_document_efficientnet_b0_tuning2.pth",
+]
+
+source_root = Path("/kaggle/input")
+target_dir = Path(
+    "/kaggle/working/checkpoint/efficientnet_b0"
+)
+target_dir.mkdir(parents=True, exist_ok=True)
+
+for filename in checkpoint_names:
+    matches = list(source_root.rglob(filename))
+
+    if not matches:
+        raise FileNotFoundError(
+            f"Checkpoint tidak ditemukan: {filename}"
+        )
+
+    shutil.copy2(matches[0], target_dir / filename)
+    print("Disalin:", filename)
 ```
 
-Jika Internet ON, alternatifnya clone repository:
-```python
-!git clone https://github.com/<username>/kaggle-document-classification.git
-import sys
-sys.path.insert(0, "/kaggle/working/kaggle-document-classification")
-from scripts.dataset import DocumentDataset
-```
+Setelah repository dan dataset ditambahkan, buka `02_modeling.ipynb` untuk menjalankan training atau evaluasi. Gunakan `03_submission.ipynb` untuk membuat file submission.
 
-## Hasil
+## Hasil dan Interpretasi
 
-| Eksperimen | Validation Accuracy | Macro F1 | Public LB | Private LB |
-|---|---:|---:|---:|---:|
-| Baseline | 0,85442 | 0,85348 | 0,84608 | — |
-| Tuning 1 | 0,85098 | 0,85006 | 0,83647 | — |
-| Tuning 2 | Isi setelah training | Isi setelah training | Isi setelah submit | Isi setelah kompetisi |
+Dari ketiga eksperimen, Hyperparameter Tuning 2 memperoleh validation accuracy dan macro F1 tertinggi. Baseline berada di urutan kedua, sedangkan Hyperparameter Tuning 1 memperoleh skor terendah.
 
-## Interpretasi
+Perbandingan performa didasarkan pada metrik validation dan skor leaderboard jika sudah tersedia. Karena beberapa hyperparameter diubah sekaligus, hasil ini belum dapat menunjukkan pengaruh masing-masing hyperparameter secara terpisah.
 
-Baseline saat ini menjadi acuan terbaik: validation accuracy 0,85442 dan public score 0,84608. Tuning 1 menghasilkan validation accuracy 0,85098 dan public score 0,83647. Tuning 2 belum dinilai.
+Gunakan confusion matrix untuk melihat kelas yang sering tertukar. Precision, recall, dan F1-score per kelas juga dapat digunakan untuk melihat kelas yang sudah dikenali dengan baik maupun yang masih sulit diprediksi.
 
-Analisis confusion matrix harus menyebut pasangan kelas yang paling sering tertukar berdasarkan angka aktual. Periksa terutama form/questionnaire, memo/letter, dan scientific_publication/scientific_report. Jelaskan kelas mudah/sulit berdasarkan precision, recall, dan F1 per kelas.
+## Catatan Reproducibility dan Keterbatasan
 
-Preprocessing mempertahankan rasio aspek dengan padding putih. Augmentasi ringan ditujukan untuk variasi kemiringan dan kualitas scan. Karena eksperimen tidak mengisolasi setiap transformasi, pengaruh masing-masing augmentasi tidak boleh diklaim sebagai sebab tunggal.
-
-Keterbatasan: resolusi 224 dapat menghilangkan detail teks kecil; validasi memakai satu split; public leaderboard belum tentu mewakili private test. Pengembangan berikutnya dapat menguji resolusi lebih tinggi, EfficientNet-B2/B3, augmentasi perspektif ringan, TTA, atau ensemble jika waktu dan GPU memungkinkan.
-
-## Lisensi dan kredit
-
-Dataset mengikuti ketentuan sumber RVL-CDIP dan aturan kompetisi Kaggle. Jangan mendistribusikan ulang gambar tanpa memeriksa lisensinya. Kode repository tidak menyertakan dataset. EfficientNet-B0 berasal dari Torchvision.
+- Seed eksperimen: 42.
+- Jumlah kelas: 16.
+- Ukuran input: 224 Ã— 224.
+- Validation split: stratified 90:10.
+- Dataset gambar TIFF tidak disimpan di GitHub.
+- Hasil training dapat berbeda bergantung pada versi PyTorch dan Torchvision, jenis GPU, serta kondisi data.
+- Evaluasi menggunakan satu validation split, sehingga hasilnya belum tentu menggambarkan performa pada seluruh test set.
+- Resolusi 224 Ã— 224 berpotensi menghilangkan detail teks berukuran kecil.
