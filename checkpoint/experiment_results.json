@@ -1,0 +1,9 @@
+[
+  {
+    "experiment": "Hyperparameter Tuning 2",
+    "validation_accuracy": 0.8609809434551703,
+    "best_epoch": 12,
+    "checkpoint": "/kaggle/working/checkpoint/best_document_efficientnet_b0_tuning2.pth",
+    "minutes": 64.92
+  }
+]

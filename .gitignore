@@ -1,0 +1,11 @@
+data/
+
+submissions/*
+!submissions/.gitkeep
+
+reports/figures/*
+!reports/figures/.gitkeep
+
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
